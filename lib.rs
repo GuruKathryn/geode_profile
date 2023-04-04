@@ -230,8 +230,8 @@ mod geode_profile {
                 // check to see if the account profile is private, if so move on
                 if profile_match.make_private == false {
                     // for each account, get the profile fields that might have that AccountID in it
-                    let acct_vec = vec![profile_match.life_and_work, profile_match.social, 
-                    profile_match.private_messaging, profile_match.marketplace, profile_match.account];
+                    let acct_vec = Vec::from([profile_match.life_and_work, profile_match.social, 
+                    profile_match.private_messaging, profile_match.marketplace, profile_match.account]);
                 
                     // if the search_account_id is any one of those, add the profile to the results vector
                     if acct_vec.contains(&search_account_id) {
