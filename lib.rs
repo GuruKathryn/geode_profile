@@ -36,16 +36,14 @@ mod geode_profile {
         social: AccountId,
         private_messaging: AccountId,
         marketplace: AccountId,
-        more_info: Vec<u8>,
         make_private: bool, 
+        timestamp: u64,
     }
     
     impl Default for Profile {
         fn default() -> Profile {
-            let default_addy = "000000000000000000000000000000000000000000000000";
-            let default_addy_id32: AccountId = default_addy.as_bytes().try_into().unwrap();
             Profile {
-                account: default_addy_id32,
+                account: AccountId::from([0x0; 32]),
                 display_name: <Vec<u8>>::default(),
                 location: <Vec<u8>>::default(),
                 tags: <Vec<u8>>::default(),
@@ -54,12 +52,12 @@ mod geode_profile {
                 website_url1: <Vec<u8>>::default(),
                 website_url2: <Vec<u8>>::default(),
                 website_url3: <Vec<u8>>::default(),
-                life_and_work: default_addy_id32,
-                social: default_addy_id32,
-                private_messaging: default_addy_id32,
-                marketplace: default_addy_id32,
-                more_info: <Vec<u8>>::default(),
+                life_and_work: AccountId::from([0x0; 32]),
+                social: AccountId::from([0x0; 32]),
+                private_messaging: AccountId::from([0x0; 32]),
+                marketplace: AccountId::from([0x0; 32]),
                 make_private: false,
+                timestamp: u64:: default(),
             }
         }
     }
@@ -71,8 +69,20 @@ mod geode_profile {
     pub struct ProfileUpdate {
         #[ink(topic)]
         account: AccountId,
+        #[ink(topic)]
+        display_name: Vec<u8>,
+        #[ink(topic)]
         location: Vec<u8>,
         tags: Vec<u8>,
+        bio: Vec<u8>,
+        photo_url: Vec<u8>,
+        website_url1: Vec<u8>,
+        website_url2: Vec<u8>,
+        website_url3: Vec<u8>,
+        life_and_work: AccountId,
+        social: AccountId,
+        private_messaging: AccountId,
+        marketplace: AccountId, 
     }
 
     // event that someone has filled out a new profile
@@ -80,8 +90,20 @@ mod geode_profile {
     pub struct NewProfile {
         #[ink(topic)]
         account: AccountId,
+        #[ink(topic)]
+        display_name: Vec<u8>,
+        #[ink(topic)]
         location: Vec<u8>,
         tags: Vec<u8>,
+        bio: Vec<u8>,
+        photo_url: Vec<u8>,
+        website_url1: Vec<u8>,
+        website_url2: Vec<u8>,
+        website_url3: Vec<u8>,
+        life_and_work: AccountId,
+        social: AccountId,
+        private_messaging: AccountId,
+        marketplace: AccountId,
     }
 
 
@@ -96,7 +118,7 @@ mod geode_profile {
         // attempting to update a profile that does not exist
         NonexistentProfile,
         // usign the new profile message to make a duplicate profile
-        DuplicateProfile,
+        CannotUpdate,
     }
 
     // ACTUAL CONTRACT STORAGE >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -138,48 +160,63 @@ mod geode_profile {
             social_account: AccountId,
             private_messaging_account: AccountId,
             marketplace_seller_account: AccountId,
-            any_extra_info: Vec<u8>,
             hide_your_profile_from_search: bool,
         ) -> Result<(), Error> {
 
             let caller = Self::env().caller();
-            // if the caller already has a profile, send an error
-            if self.profile_map.contains(&caller) {
-                return Err(Error::DuplicateProfile);
+            // if the caller already has a profile OR data is too big, send an error
+            if self.profile_map.contains(&caller) || preferred_display_name.len() > 180
+            || my_location.len() > 200 || expertise_and_offerings_tags.len() > 600 
+            || my_bio.len() > 1200 || photo_link.len() > 300 || website1.len() > 100
+            || website2.len() > 100 || website3.len() > 100 {
+                return Err(Error::CannotUpdate);
             }
             else {            
                 // create the Profile structure
                 let updated_profile = Profile {
                     account: caller,
-                    display_name: preferred_display_name,
+                    display_name: preferred_display_name.clone(),
                     location: my_location.clone(),
                     tags: expertise_and_offerings_tags.clone(),
-                    bio: my_bio,
-                    photo_url: photo_link,
-                    website_url1: website1,
-                    website_url2: website2,
-                    website_url3: website3,
+                    bio: my_bio.clone(),
+                    photo_url: photo_link.clone(),
+                    website_url1: website1.clone(),
+                    website_url2: website2.clone(),
+                    website_url3: website3.clone(),
                     life_and_work: life_and_work_account,
                     social: social_account,
                     private_messaging: private_messaging_account,
                     marketplace: marketplace_seller_account,
-                    more_info: any_extra_info,
                     make_private: hide_your_profile_from_search,
+                    timestamp: self.env().block_timestamp(),
                 };
                 
-                //add the account to the storage vector of all accounts
+                // update profile_accounts StorageVec
                 self.profile_accounts.push(&caller);
+                
                 // update the profile map in storage
                 if self.profile_map.try_insert(caller, &updated_profile).is_err() {
                     return Err(Error::ProfileTooLarge);
                 }
 
-                // emit an event to the chain
-                self.env().emit_event(NewProfile {
-                    account: caller,
-                    location: my_location,
-                    tags: expertise_and_offerings_tags,
-                });
+                // emit an event to the chain IF the profile is not hidden
+                if hide_your_profile_from_search == false {
+                    self.env().emit_event(NewProfile {
+                        account: caller,
+                        display_name: preferred_display_name,
+                        location: my_location,
+                        tags: expertise_and_offerings_tags,
+                        bio: my_bio,
+                        photo_url: photo_link,
+                        website_url1: website1,
+                        website_url2: website2,
+                        website_url3: website3,
+                        life_and_work: life_and_work_account,
+                        social: social_account,
+                        private_messaging: private_messaging_account,
+                        marketplace: marketplace_seller_account, 
+                    });
+                }
             }
             Ok(())
         }
@@ -199,47 +236,70 @@ mod geode_profile {
             social_account: AccountId,
             private_messaging_account: AccountId,
             marketplace_seller_account: AccountId,
-            any_extra_info: Vec<u8>,
             hide_your_profile_from_search: bool,
         ) -> Result<(), Error> {
-
-            let caller = Self::env().caller();
-            // check to see if this profile exists
-            if self.profile_map.contains(&caller) {
-                // create the Profile structure
-                let updated_profile = Profile {
-                    account: caller,
-                    display_name: preferred_display_name,
-                    location: my_location.clone(),
-                    tags: expertise_and_offerings_tags.clone(),
-                    bio: my_bio,
-                    photo_url: photo_link,
-                    website_url1: website1,
-                    website_url2: website2,
-                    website_url3: website3,
-                    life_and_work: life_and_work_account,
-                    social: social_account,
-                    private_messaging: private_messaging_account,
-                    marketplace: marketplace_seller_account,
-                    more_info: any_extra_info,
-                    make_private: hide_your_profile_from_search,
-                };
-                
-                if self.profile_map.try_insert(caller, &updated_profile).is_err() {
-                    return Err(Error::ProfileTooLarge);
-                }
-
-                // emit an event to the chain
-                self.env().emit_event(ProfileUpdate {
-                    account: caller,
-                    location: my_location,
-                    tags: expertise_and_offerings_tags,
-                });
-
+            // If the data is too large, send an error first
+            if preferred_display_name.len() > 180
+            || my_location.len() > 200 || expertise_and_offerings_tags.len() > 600 
+            || my_bio.len() > 1200 || photo_link.len() > 300 || website1.len() > 100
+            || website2.len() > 100 || website3.len() > 100 {
+                return Err(Error::CannotUpdate);
             }
             else {
-                // send an error that the profile does not exist
-                return Err(Error::NonexistentProfile);
+                let caller = Self::env().caller();
+                // check to see if this profile exists
+                if self.profile_map.contains(&caller) {
+                    // create the Profile structure
+                    let updated_profile = Profile {
+                        account: caller,
+                        display_name: preferred_display_name.clone(),
+                        location: my_location.clone(),
+                        tags: expertise_and_offerings_tags.clone(),
+                        bio: my_bio.clone(),
+                        photo_url: photo_link.clone(),
+                        website_url1: website1.clone(),
+                        website_url2: website2.clone(),
+                        website_url3: website3.clone(),
+                        life_and_work: life_and_work_account,
+                        social: social_account,
+                        private_messaging: private_messaging_account,
+                        marketplace: marketplace_seller_account,
+                        make_private: hide_your_profile_from_search,
+                        timestamp: self.env().block_timestamp(),
+                    };
+                    
+                    // add the account to the storage vector of all accounts
+                    self.profile_accounts.push(&caller);
+
+                    // update the profile_map
+                    if self.profile_map.try_insert(caller, &updated_profile).is_err() {
+                        return Err(Error::ProfileTooLarge);
+                    }
+
+                    // emit an event to the chain IF the profile is not hidden
+                    if hide_your_profile_from_search == false {
+                        self.env().emit_event(ProfileUpdate {
+                            account: caller,
+                            display_name: preferred_display_name,
+                            location: my_location,
+                            tags: expertise_and_offerings_tags,
+                            bio: my_bio,
+                            photo_url: photo_link,
+                            website_url1: website1,
+                            website_url2: website2,
+                            website_url3: website3,
+                            life_and_work: life_and_work_account,
+                            social: social_account,
+                            private_messaging: private_messaging_account,
+                            marketplace: marketplace_seller_account, 
+                        });
+                    }
+
+                }
+                else {
+                    // send an error that the profile does not exist
+                    return Err(Error::NonexistentProfile);
+                }
             }
 
             Ok(())
@@ -248,7 +308,7 @@ mod geode_profile {
 
         // MESSAGE FUNCTIONS THAT RETRIEVE DATA FROM STORAGE  >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-        // 2 🟢 GET THE PROFILE FOR THE GIVEN ACCOUNT
+        // 2 🟢 GET THE PROFILE FOR A GIVEN ACCOUNT
         #[ink(message)]
         pub fn get_account_profile(&self, account: AccountId) -> Vec<Profile> {
             let mut results = Vec::new();
@@ -259,19 +319,26 @@ mod geode_profile {
             results
         }
 
-        // 3 🟢 SEARH PROFILES BY KEYWORD 
+        // 3 🟢 SEARH PROFILES BY KEYWORD
         // Returns all the profiles that match the keyword inputs
         #[ink(message)]
-        pub fn get_matching_profiles_by_keyword(&self, keywords: Vec<u8>) -> Vec<Profile> {
+        pub fn get_matching_profiles_by_keyword(&self, 
+            keywords1: Vec<u8>, 
+            keywords2: Vec<u8>, 
+            keywords3: Vec<u8>) -> Vec<Profile> {
             // set up your results vector
             let mut matching_profiles: Vec<Profile> = Vec::new();
+            // make a string of the keywords we are searching for
+            let search_string1 = String::from_utf8(keywords1).unwrap_or_default(); 
+            let search_string2 = String::from_utf8(keywords2).unwrap_or_default();
+            let search_string3 = String::from_utf8(keywords3).unwrap_or_default();
 
             // iterate over the profile accounts vector to find profiles that match
-            // get the length of the profile_accounts storagevec and loop over the index
             if self.profile_accounts.len() > 0 {
                 for i in 0..self.profile_accounts.len() {
                     // get the profile for the account
                     let account = self.profile_accounts.get(i).unwrap();
+                    // get the profile for the account
                     let profile_match = self.profile_map.get(&account).unwrap_or_default();
                     // check to see if the account profile is private, if so move on
                     if !profile_match.make_private {
@@ -282,19 +349,17 @@ mod geode_profile {
                         let location_string = String::from_utf8(location_vecu8).unwrap_or_default();
                         let name_vecu8 = profile_match.display_name.clone();
                         let name_string = String::from_utf8(name_vecu8).unwrap_or_default();
-                        let info_vecu8 = profile_match.more_info.clone();
-                        let info_string = String::from_utf8(info_vecu8).unwrap_or_default();
                         let tag_vecu8 = profile_match.tags.clone();
                         let tag_string = String::from_utf8(tag_vecu8).unwrap_or_default();
                     
-                        // make a string of the keywords we are searching for
-                        let keywords_vecu8 = keywords.clone();
-                        let search_string = String::from_utf8(keywords_vecu8).unwrap_or_default(); 
-
                         // if we get a match to any of those profile elements, add the profile to the results
-                        if bio_string.contains(&search_string) || location_string.contains(&search_string) 
-                        || name_string.contains(&search_string) || info_string.contains(&search_string) 
-                        || tag_string.contains(&search_string) {
+                        // must match on ALL keywords
+                        if (bio_string.contains(&search_string1) || location_string.contains(&search_string1) 
+                        || name_string.contains(&search_string1) || tag_string.contains(&search_string1))
+                        && (bio_string.contains(&search_string2) || location_string.contains(&search_string2) 
+                        || name_string.contains(&search_string2) || tag_string.contains(&search_string2))
+                        && (bio_string.contains(&search_string3) || location_string.contains(&search_string3) 
+                        || name_string.contains(&search_string3) || tag_string.contains(&search_string3)) {
                             // add it to the vector of Profiles we will return
                             matching_profiles.push(profile_match);
                         }
@@ -303,6 +368,7 @@ mod geode_profile {
                     // continue iterating
                 }
             }
+            
             // return the results
             matching_profiles
 
@@ -315,11 +381,13 @@ mod geode_profile {
         pub fn get_matching_profiles_by_account(&self, search_account_id: AccountId) -> Vec<Profile> {
             // set up your results vector
             let mut matching_profiles: Vec<Profile> = Vec::new();
+            
             // iterate over the profile accounts vector to find profiles that match
             if self.profile_accounts.len() > 0 {
                 for i in 0..self.profile_accounts.len() {
                     // get the profile for the account
                     let account = self.profile_accounts.get(i).unwrap();
+                    // get the profile for the account
                     let profile_match = self.profile_map.get(&account).unwrap_or_default();
                     // check to see if the account profile is private, if so move on
                     if !profile_match.make_private {
@@ -336,29 +404,13 @@ mod geode_profile {
                     // finish iterating
                 }
             }
+            
             // return the results
             matching_profiles
 
         }
 
-        // 5 🟢 Get all the accounts that have set their profile at least once
-        #[ink(message)]
-        pub fn get_accounts_with_profiles(&self) -> Vec<AccountId> {
-            // set up return structure
-            let mut accounts_list: Vec<AccountId> = Vec::new();
-            // get all the accounts
-            if self.profile_accounts.len() > 0 {
-                for i in 0..self.profile_accounts.len() {
-                    // get the account
-                    let account = self.profile_accounts.get(i).unwrap();
-                    accounts_list.push(account);
-                }
-            }    
-            // return results
-            accounts_list
-        }
-
-        // 6 🟢 Verify that this account has set their profile
+        // 5 🟢 Verify that this account has set their profile
         #[ink(message)]
         pub fn verify_account(&self, verify_account_id: AccountId) -> u8 {
             // set up return structure
